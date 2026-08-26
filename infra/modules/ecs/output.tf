@@ -15,7 +15,7 @@ output "task_definition_arn" {
 }
 
 output "execution_role_arn" {
-  value = aws_iam_role.ecs_execution_role.arn
+  value = aws_iam_role.execution.arn
 }
 
 output "ecs_security_group_id" {
