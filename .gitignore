@@ -19,3 +19,5 @@ dist/
 
 # IDE
 .vscode/
+
+*.swp
