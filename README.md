@@ -2,14 +2,24 @@
 
 Self-hosted IT Tools (https://github.com/CorentinTh/it-tools), containerised and deployed on AWS ECS Fargate with HTTPS and a custom domain.
 
-## Overview
-TODO
-
-## Architecture
+## Architecture Diagram 
 TODO — see docs/architecture-diagram.png
 
-## Setup / Reproduce
+## HTTPS
 TODO
 
-## Screenshots
+## Health Check
 See /docs
+
+## CI/CD Pipelines
+
+
+## Local Setup
+#Prerequisites
+
+## Project Structure
+
+
+## Lessons Learned
+
+## Future Improvements
