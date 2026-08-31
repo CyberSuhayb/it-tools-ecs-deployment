@@ -117,8 +117,8 @@ resource "aws_ecs_service" "this" {
 
   load_balancer {
     target_group_arn = var.target_group_arn
-    container_name    = var.project_name
-    container_port    = var.container_port
+    container_name   = var.project_name
+    container_port   = var.container_port
   }
 
   depends_on = [aws_iam_role_policy_attachment.execution]
