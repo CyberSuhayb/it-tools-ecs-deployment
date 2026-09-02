@@ -40,7 +40,7 @@ Currently there aren't any production users. This project was built to learn and
 
 ## Architecture
 
-![Architecture](docs/architecture.png)
+![Architecture](docs/architecture-diagram.png)
 
 The VPC spans two Availability Zones, eu-west-2a and eu-west-2b. The ALB and NAT Gateway sit in public subnets. The ECS task runs in a private subnet with no public IP and it has no direct route to or from the internet. Outbound traffic (pulling from ECR, sending logs to CloudWatch) goes through the NAT Gateway. The ALB is the only internet-facing component in the whole stack.
 
