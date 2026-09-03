@@ -14,7 +14,8 @@ variable "domain_name" {
 }
 
 variable "zone_id" {
-  type = string
+  type    = string
+  default = "Z10391493G1F374R4AXXZ"
 }
 
 variable "container_port" {
@@ -58,7 +59,8 @@ variable "private_subnet_cidrs" {
 }
 
 variable "image_tag" {
-  type = string
+  type    = string
+  default = "b39dc66"
 
   validation {
     condition     = length(trimspace(var.image_tag)) > 0
