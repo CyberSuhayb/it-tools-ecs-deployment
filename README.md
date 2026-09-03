@@ -1,16 +1,16 @@
 # IT Tools ECS Deployment
 
-A production-style container deployment on AWS ECS Fargate, running [IT Tools](https://github.com/CorentinTh/it-tools) behind an Application Load Balancer in a secure Multi-AZ VPC with public and private subnets. Infrastructure is provisioned through modular Terraform with remote state and locking in Amazon S3, and GitHub Actions automates container builds and infrastructure deployment using OIDC — no long-lived AWS credentials stored anywhere.
+A production-style container deployment on AWS ECS Fargate, running [IT Tools](https://github.com/CorentinTh/it-tools) behind an Application Load Balancer in a secure Multi-AZ VPC with public and private subnets. Infrastructure is provisioned through modular Terraform with remote state and locking in Amazon S3, and GitHub Actions automates container builds and infrastructure deployment using OIDC with no long-lived AWS credentials stored anywhere.
 
 The application runs as an ECS Fargate task inside private subnets with no public IP, reachable only through the ALB. Docker images are stored in Amazon ECR and versioned by commit SHA. HTTPS is provided through AWS Certificate Manager, with Route 53 handling DNS. Amazon CloudWatch collects application logs from the running ECS task.
 
-The infrastructure was first built manually through the AWS Console (ClickOps) to understand how ECS, the ALB, and the surrounding networking actually fit together, then torn down and rebuilt entirely as Terraform, split across five reusable modules. Three separated GitHub Actions pipelines handle building and pushing the image, deploying it to ECS, and applying infrastructure changes — each independently triggerable, so a routine app deploy never risks touching the VPC or ALB.
+The infrastructure was first built manually through the AWS Console (ClickOps) to understand how ECS, the ALB, and the surrounding networking actually fit together, then torn down and rebuilt entirely as Terraform, split across five reusable modules. Three separated GitHub Actions pipelines handle building and pushing the image, deploying it to ECS, and applying infrastructure changes that are each independently triggerable, so a routine app deploy never risks touching the VPC or ALB.
 
 Live at: https://tm.awslabpro.uk
 
 ## Table of Contents
+- The Big Four Questions
 - Architecture
-- What is this application?
 - HTTPS
 - Health Check
 - CI/CD Pipelines
@@ -20,22 +20,34 @@ Live at: https://tm.awslabpro.uk
 - Lessons Learned
 - Future Improvements
 
+## The Big Four Questions
+
+**What is this app?**
+
+IT Tools is an open source collection of everyday utilities for developers. IT Tools contains things like UUID and token generators, JSON/YAML/XML converters and dozens of similar tools. It is a single page frontend application with no backend or database and everything runs on the clients side in the browser. The server's only job is to serve those files.
+
+**Why did you choose this application?**
+
+I chose this application because IT Tools is lightweight enough that I could spend all my time on the infrastructure and deployment side rather than debugging application code. This application allowed me to learn AWS, Docker, networking, Terraform, and CI/CD. 
+
+**Why did you host it on ECS instead of a VM or a free host like Vercel or Netlify?**
+
+Vercel or Netlify would have had this application online in minutes, which is exactly why I didn't use them. I wanted hands on experience with how containerised appliactions are really deployed and operated on cloud infrastructure. I chose ECS Fargate specifically so I could focus on container orchestration itself, without also having to patch, scale, or manage the underlying host. 
+
+**How many users are there, or how many are you expecting?**
+
+Currently there aren't any production users. This project was built to learn and demonstrate cloud deployment. As it is currently configured, a single ECS Fargate task should handle around 50 concurrent users without issue, though this is dependent on a number of factors, for example the exact number and the kind of requests that are coming in and how much load each on puts on the task. However if I required more resources I could scale up the task's CPU and memory, or I could simply run more tasks behind the same Application Load Balancer. This straightforward part of scaling is the main reason in choosing this setup in the first place.
+
 ## Architecture
 
-![Architecture](docs/architecture.png)
+![Architecture](docs/architecture-diagram.png)
 
-The VPC spans two Availability Zones, eu-west-2a and eu-west-2c. The ALB and NAT Gateway sit in public subnets; the ECS task runs in a private subnet with no public IP — it has no direct route to or from the internet. Outbound traffic (pulling from ECR, sending logs to CloudWatch) goes through the NAT Gateway. The ALB is the only internet-facing component in the whole stack.
-
-This goes beyond the project brief's minimum requirement of a VPC with public subnets — a service running with a public IP is a real exposure risk in production, so the private-subnet split was worth the extra NAT Gateway module.
-
-## What is this application?
-
-IT Tools is a free, open-source collection of everyday developer utilities (UUID generators, JSON formatters, encoders, hash generators, and more) served as a single static frontend. I picked it because it's lightweight, has no backend or database dependency, and let me focus entirely on the deployment and infrastructure side rather than debugging application code — the whole point of this project was learning ECS, Terraform, and CI/CD, not building an app.
+The VPC spans two Availability Zones, eu-west-2a and eu-west-2b. The ALB and NAT Gateway sit in public subnets. The ECS task runs in a private subnet with no public IP and it has no direct route to or from the internet. Outbound traffic (pulling from ECR, sending logs to CloudWatch) goes through the NAT Gateway. The ALB is the only internet-facing component in the whole stack.
 
 ## HTTPS
 
 - Certificate issued and DNS-validated via AWS Certificate Manager, against a Route53 hosted zone for awslabpro.uk
-- Since the domain was registered through Cloudflare rather than Route53, I delegated just the tm subdomain to Route53 using NS records, rather than migrating the whole domain — Route53 only needed to own DNS validation and routing for this one subdomain
+- Since the domain was registered through Cloudflare rather than Route53, I delegated just the tm subdomain to Route53 using NS records, rather than migrating the whole domain and the Route53 only needed to own DNS validation and routing for this one subdomain
 - ALB listener on 443 forwards to the ECS target group
 - ALB listener on 80 issues a permanent redirect to 443
 
@@ -66,6 +78,8 @@ Three separated GitHub Actions workflows, each usable manually via workflow disp
 ![Terraform deploy workflow](docs/workflow-terraform-deploy.png)
 
 **4. Terraform Destroy** — manual-only, gated behind typing "destroy" as an explicit workflow input. Never runs automatically.
+
+![Terraform destroy workflow](docs/workflow-terraform-destroy.png)
 
 ## Key Decisions
 
@@ -122,7 +136,7 @@ For CI/CD, set two GitHub repository secrets: one holding the IAM role ARN, and 
 - The session-tagging permission is separate and easy to miss. The AWS credentials action tags the assumed role session by default; without explicitly trusting that permission alongside the main assume-role action, the entire call fails, and the error message doesn't distinguish this from a broken trust policy.
 - Package manager mismatches fail in confusing, downstream ways. The app's lockfile was generated with pnpm; installing with plain npm resolved a different, incompatible version of a transitive dependency, producing a build error deep in an unrelated file rather than a clear "wrong package manager" message.
 - A formatting check will fail CI on cosmetic issues alone, even when the code is functionally correct — worth running a recursive format pass locally before every push touching the infrastructure folder.
-- Changing an Availability Zone on an existing subnet forces Terraform to destroy and recreate it, and an Application Load Balancer can take many minutes to release its network interface from the old subnet before that deletion can complete — not a hang, just a slow, well-documented AWS behaviour.
+- Changing an Availability Zone on an existing subnet forces Terraform to destroy and recreate it, and an Application Load Balancer can take a long time to release its network interface from the old subnet before that deletion can complete — not a hang, just a slow, well-documented AWS behaviour.
 
 ## Future Improvements
 
