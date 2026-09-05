@@ -63,7 +63,7 @@ nginx serves a dedicated /health location returning a status of ok, independent 
 
 ## CI/CD Pipelines
 
-Three separated GitHub Actions workflows, each usable manually via workflow dispatch, all authenticating to AWS through OIDC — GitHub issues a short-lived identity token per run, which AWS exchanges for temporary credentials scoped to a single IAM role trusted only by this specific repository. No AWS access keys exist in GitHub at all.
+Three separated GitHub Actions workflows, each usable manually via workflow dispatch, all authenticating to AWS through OIDC. GitHub issues a short-lived identity token per run, which AWS exchanges for temporary credentials scoped to a single IAM role trusted only by this specific repository. No AWS access keys exist in GitHub at all.
 
 **1. Build and Push to ECR** — triggers on push to the app source, Dockerfile, or nginx config. Builds the Docker image, tags it with the commit SHA, pushes to ECR.
 
@@ -83,12 +83,11 @@ Three separated GitHub Actions workflows, each usable manually via workflow disp
 
 ## Key Decisions
 
-- Private subnets over the brief's minimum requirement — see Architecture above.
-- Separate app-deploy and infra-deploy pipelines — real teams don't run a full Terraform apply on every app code change; infra changes are rarer and reviewed separately from routine app deploys. Coupling them risks an app change accidentally touching the VPC, ALB, or security groups.
-- Remote Terraform state in S3 — not required by the brief, but state stored only on a local machine has no recovery path if that machine is lost, and risks accidental commits of sensitive state data. Set up with versioning and public access blocked.
-- Immutable ECR tags plus a lifecycle policy — every push gets a unique, permanent tag matching the commit SHA; an expiry policy cleans up untagged or orphaned images automatically.
-- pnpm over npm — the app's lockfile is pnpm-specific; installing with plain npm silently resolved an incompatible dependency version and broke the build in a way that wasn't obvious until deep in the stack trace.
-
+- I put the ECS task in a private subnet with no public IP, so the ALB is the only way in from the internet. 
+- I separated app-deploy and infra-deploy pipelines because real teams don't run a full Terraform apply on every app code change; infra changes are rarer and reviewed separately from routine app deploys. Coupling them risks an app change accidentally touching the VPC, ALB, or security groups.
+- I created a remote Terraform state in S3 rather than leaving it on my local machine and if my laptop died or I lost the files, there'd be no way to recover the state, and there's also a real risk of accidentally committing sensitive state data to git if it's just sitting locally. I enabled versioning on the bucket and blocked all public access to it.
+- I used immutable ECR tags with a lifecycle policy. Every image pushed gets a unique tag based on the commit SHA, so nothing ever gets silently overwritten. I also added a lifecycle policy that automatically cleans up old, untagged images so the repository dosen't just keep building up unused files over time.
+- I chose pnpm instead of npm because the app's lockfile was built specifically for pnpm. When I first tried installing with plain npm, it quietly resolved a different, incompatible version of one dependency. The build failed, but the error didn't point anywhere near the real cause so I had to dig fairly deep into the stack trace before realizing it was actually a package manager mismatch.
 ## Local Setup
 
 ### Prerequisites
@@ -100,8 +99,8 @@ Three separated GitHub Actions workflows, each usable manually via workflow disp
 ### Steps
 
 1. Clone the repository and enter it.
-2. Build and test the container locally — build the image, run it mapping port 80 to the container's 8080, then check that the health endpoint on localhost returns a status of ok.
-3. Push the image to ECR once, before Terraform's ECS service can pull it — authenticate Docker to ECR, tag the local image, and push it.
+2. Build and test the container locally and build the image, run it mapping port 80 to the container's 8080, then check that the health endpoint on localhost returns a status of ok.
+3. Push the image to ECR once, before Terraform's ECS service can pull it, authenticate Docker to ECR, tag the local image, and push it.
 4. From the infra folder, run terraform init, then plan and apply, supplying your Route53 zone ID and an image tag as variables.
 5. Verify the live app by checking your domain's health endpoint over HTTPS.
 
@@ -132,16 +131,16 @@ For CI/CD, set two GitHub repository secrets: one holding the IAM role ARN, and 
 
 ## Lessons Learned
 
-- GitHub's OIDC subject claim format isn't what most existing docs and tutorials show. It now includes numeric owner and repo IDs, not just names as the classic examples suggest. A trust policy written against the older wildcard pattern fails with a generic "not authorized" error that gives zero indication the claim format is the actual problem — fixed it by adding a debug step that pulled and printed the raw token claims directly, rather than guessing at the trust policy repeatedly.
-- The session-tagging permission is separate and easy to miss. The AWS credentials action tags the assumed role session by default; without explicitly trusting that permission alongside the main assume-role action, the entire call fails, and the error message doesn't distinguish this from a broken trust policy.
-- Package manager mismatches fail in confusing, downstream ways. The app's lockfile was generated with pnpm; installing with plain npm resolved a different, incompatible version of a transitive dependency, producing a build error deep in an unrelated file rather than a clear "wrong package manager" message.
-- A formatting check will fail CI on cosmetic issues alone, even when the code is functionally correct — worth running a recursive format pass locally before every push touching the infrastructure folder.
-- Changing an Availability Zone on an existing subnet forces Terraform to destroy and recreate it, and an Application Load Balancer can take a long time to release its network interface from the old subnet before that deletion can complete — not a hang, just a slow, well-documented AWS behaviour.
+- GitHub's OIDC trust policy needs to account for numeric owner and repository IDs, not just names and the older wildcard pattern most docs show will fail with a vague "not authorized" error.
+- The AWS credentials action also needs sts:TagSession trusted alongside the main assume-role permission, or the whole thing fails silently.
+- The app's lockfile was pnpm-specific; installing with plain npm resolved a different dependency version and broke the build in a confusing way.
+- A Terraform formatting check will fail CI on style alone, even when the code works so its worth running locally first.
+- Changing a subnet's Availability Zone forces a destroy-and-recreate, and the ALB can take a while to release its old network interface before that can complete.
 
 ## Future Improvements
 
-- Scope the CI/CD IAM role's permissions to exact resource ARNs and actions rather than several broad AWS-managed policies — the current IAM access policy in particular is far wider than this pipeline strictly needs
-- Add a linting step and a Slack or job-summary notification to the CI/CD pipeline
-- Move account-specific values into AWS Systems Manager Parameter Store instead of passing them as plain Terraform variables
-- Add a second NAT Gateway, one per Availability Zone, for resilience — the current single NAT Gateway is a cost trade-off that introduces an AZ dependency
+- Scope the CI/CD IAM role down to exact actions and resources instead of broad managed policies.
+- Add a step that automatically checks the Terraform code for common mistakes before it runs, and a notification so I know a pipeline finished without having to check GitHub myself.
+- Move account-specific values into AWS Systems Manager Parameter Store instead of passing them as plain Terraform variables.
+- Add a second NAT Gateway, one per Availability Zone, for resilience across both Availability Zones.
 - Add ECS auto-scaling based on CPU and memory utilization
