@@ -9,16 +9,16 @@ The infrastructure was first built manually through the AWS Console (ClickOps) t
 Live at: https://tm.awslabpro.uk
 
 ## Table of Contents
-- The Big Four Questions
-- Architecture
-- HTTPS
-- Health Check
-- CI/CD Pipelines
-- Key Decisions
-- Local Setup
-- Project Structure
-- Lessons Learned
-- Future Improvements
+- [The Big Four Questions](#the-big-four-questions)
+- [Architecture](#architecture)
+- [HTTPS](#https)
+- [Health Check](#health-check)
+- [CI/CD Pipelines](#cicd-pipelines)
+- [Key Decisions](#key-decisions)
+- [Local Setup](#local-setup)
+- [Project Structure](#project-structure)
+- [Lessons Learned](#lessons-learned)
+- [Future Improvements](#future-improvements)
 
 ## The Big Four Questions
 
@@ -32,11 +32,11 @@ I chose this application because IT Tools is lightweight enough that I could spe
 
 **Why did you host it on ECS instead of a VM or a free host like Vercel or Netlify?**
 
-Vercel or Netlify would have had this application online in minutes, which is exactly why I didn't use them. I wanted hands on experience with how containerised appliactions are really deployed and operated on cloud infrastructure. I chose ECS Fargate specifically so I could focus on container orchestration itself, without also having to patch, scale, or manage the underlying host. 
+I considered Vercel and Netlify, since IT Tools is just a static frontend and either would have deployed it in minutes with zero configuration. I chose ECS instead because this project isn't really about the app instead it's a demonstration of how I'd design and operate infrastructure for a real system: networking, load balancing, container orchestration, IAM, and CI/CD authentication. Vercel and Netlify abstract all of that away, which is exactly why they weren't the right fit here. A plain VM was the other option, but ECS Fargate let me focus specifically on container orchestration without also managing patching or scaling of the underlying host.
 
 **How many users are there, or how many are you expecting?**
 
-Currently there aren't any production users. This project was built to learn and demonstrate cloud deployment. As it is currently configured, a single ECS Fargate task should handle around 50 concurrent users without issue, though this is dependent on a number of factors, for example the exact number and the kind of requests that are coming in and how much load each on puts on the task. However if I required more resources I could scale up the task's CPU and memory, or I could simply run more tasks behind the same Application Load Balancer. This straightforward part of scaling is the main reason in choosing this setup in the first place.
+This isn't a project with real users today, but I designed it the way I would a real production system rather than a personal script. The private-subnet architecture, remote state with locking, immutable image tagging, and separated CI/CD pipelines all reflect a system-design mindset aimed at correctness and safety under change, not just getting something online. As configured, a single ECS Fargate task would comfortably handle a modest amount of concurrent traffic, and scaling further is a matter of increasing the desired count or task size,   the architecture was built to support that without structural changes.
 
 ## Architecture
 
